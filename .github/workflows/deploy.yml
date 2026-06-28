@@ -33,7 +33,7 @@ jobs:
       - name: Build
         working-directory: brickprice/frontend
         env:
-          REACT_APP_API_URL: https://placeholder.com
+          REACT_APP_API_URL: https://brickprice-production.up.railway.app
           PUBLIC_URL: /Brickprice
         run: npm run build
 
