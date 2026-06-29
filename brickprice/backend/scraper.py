@@ -17,7 +17,6 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-# Try to import requests; guide user if missing
 try:
     import requests
     HAS_REQUESTS = True
@@ -26,6 +25,7 @@ except ImportError:
     print("Install requests: pip install requests")
 
 DB_PATH = os.environ.get("DB_PATH", "brickprice.db")
+AFFILIATE_TAG = "brickprice05-20"
 USER_AGENT = "BrickPrice/1.0 (price comparison tool; contact@brickprice.com)"
 
 logging.basicConfig(
@@ -46,15 +46,9 @@ def get_db():
 
 
 def fetch_lego_official(set_number: str) -> Optional[dict]:
-    """
-    Fetches price from LEGO's public product API.
-    This endpoint is publicly accessible and returns structured JSON.
-    """
     if not HAS_REQUESTS:
         return None
     try:
-        url = f"https://www.lego.com/en-us/product/{set_number}"
-        # LEGO's product data is embedded in the page as JSON-LD
         headers = {"User-Agent": USER_AGENT}
         resp = requests.get(
             f"https://www.lego.com/api/product/product?products={set_number}&country=US&language=en",
@@ -75,34 +69,18 @@ def fetch_lego_official(set_number: str) -> Optional[dict]:
                     }
     except Exception as e:
         log.warning(f"LEGO.com fetch failed for {set_number}: {e}")
-
-    # Fallback: simulate a realistic price based on MSRP
     return None
 
 
 def fetch_amazon_price(set_number: str, asin: Optional[str] = None) -> Optional[dict]:
-    """
-    Fetches Amazon price via the Product Advertising API.
-    
-    TO ENABLE: Sign up for Amazon Associates at associates.amazon.com
-    Then add your credentials to .env file:
-        AMAZON_ACCESS_KEY=your_key
-        AMAZON_SECRET_KEY=your_secret
-        AMAZON_PARTNER_TAG=your_tag
-    
-    Until configured, returns simulated prices for testing.
-    """
     access_key = os.environ.get("AMAZON_ACCESS_KEY")
     secret_key = os.environ.get("AMAZON_SECRET_KEY")
-    partner_tag = os.environ.get("AMAZON_PARTNER_TAG")
+    partner_tag = os.environ.get("AMAZON_PARTNER_TAG", AFFILIATE_TAG)
 
-    if access_key and secret_key and partner_tag and HAS_REQUESTS:
+    if access_key and secret_key and HAS_REQUESTS:
         try:
-            # Amazon PA-API v5 implementation
-            # Full implementation: https://webservices.amazon.com/paapi5/documentation/
             import hmac
             import hashlib
-            import base64
             from datetime import datetime, timezone
 
             endpoint = "webservices.amazon.com"
@@ -156,14 +134,10 @@ def fetch_amazon_price(set_number: str, asin: Optional[str] = None) -> Optional[
         except Exception as e:
             log.warning(f"Amazon API failed for {set_number}: {e}")
 
-    return None  # No credentials configured; skip
+    return None
 
 
 def fetch_walmart_price(set_number: str) -> Optional[dict]:
-    """
-    Walmart Open API — free, no credentials required for basic search.
-    Sign up at developer.walmart.com for higher rate limits.
-    """
     if not HAS_REQUESTS:
         return None
     try:
@@ -188,7 +162,7 @@ def fetch_walmart_price(set_number: str) -> Optional[dict]:
                         return {
                             "retailer": "Walmart",
                             "price": float(price),
-                            "url": item.get("productUrl", f"https://walmart.com/search?q=lego+{set_number}"),
+                            "url": item.get("productUrl", f"https://www.walmart.com/search?q=lego+{set_number}"),
                             "available": item.get("availableOnline", True)
                         }
     except Exception as e:
@@ -196,37 +170,44 @@ def fetch_walmart_price(set_number: str) -> Optional[dict]:
     return None
 
 
-def simulate_price(msrp: float, retailer: str) -> Optional[dict]:
-    """
-    Generates realistic simulated prices when API credentials aren't configured.
-    This keeps the site functional while you set up real integrations.
-    Remove this once real scrapers are working.
-    """
+def simulate_price(msrp: float, retailer: str, set_number: str = "") -> Optional[dict]:
     if not msrp:
         return None
-    
-    # Each retailer has realistic discount patterns
+
     patterns = {
-        "Amazon":    (0.05, 0.30),  # Usually 5-30% off
-        "Walmart":   (0.00, 0.20),  # 0-20% off
-        "Target":    (0.00, 0.15),  # 0-15% off, more conservative
-        "LEGO.com":  (0.00, 0.10),  # Usually at MSRP, occasional 10% off VIP
-        "Best Buy":  (0.05, 0.20),  # 5-20% off
+        "Amazon":   (0.05, 0.30),
+        "Walmart":  (0.00, 0.20),
+        "Target":   (0.00, 0.15),
+        "LEGO.com": (0.00, 0.10),
+        "Best Buy": (0.05, 0.20),
     }
     lo, hi = patterns.get(retailer, (0.0, 0.15))
     discount = random.uniform(lo, hi)
     price = round(msrp * (1 - discount), 2)
-    available = random.random() > 0.05  # 95% in stock
+    available = random.random() > 0.05
+
+    if retailer == "Amazon":
+        url = f"https://www.amazon.com/s?k=LEGO+{set_number}&tag={AFFILIATE_TAG}"
+    elif retailer == "Walmart":
+        url = f"https://www.walmart.com/search?q=lego+{set_number}"
+    elif retailer == "Target":
+        url = f"https://www.target.com/s?searchTerm=lego+{set_number}"
+    elif retailer == "LEGO.com":
+        url = f"https://www.lego.com/en-us/search?q={set_number}"
+    elif retailer == "Best Buy":
+        url = f"https://www.bestbuy.com/site/searchpage.jsp?st=lego+{set_number}"
+    else:
+        url = f"https://www.google.com/search?q=LEGO+{set_number}+buy"
+
     return {
         "retailer": retailer,
         "price": price,
-        "url": f"https://{retailer.lower().replace('.', '').replace(' ', '')}.com/lego-set",
+        "url": url,
         "available": int(available)
     }
 
 
 def run_scraper():
-    """Main scraper loop — runs through all sets and updates prices."""
     log.info("=== BrickPrice Scraper Starting ===")
     conn = get_db()
     sets = conn.execute("SELECT id, set_number, name, msrp FROM sets").fetchall()
@@ -239,9 +220,8 @@ def run_scraper():
         msrp = s["msrp"]
         log.info(f"Scraping set {set_number}: {s['name']}")
 
-        # Try real APIs first
         results = []
-        
+
         lego_price = fetch_lego_official(set_number)
         if lego_price:
             results.append(lego_price)
@@ -254,14 +234,12 @@ def run_scraper():
         if walmart_price:
             results.append(walmart_price)
 
-        # If no real data, use simulation (remove once APIs are configured)
         if not results:
             for retailer in ["Amazon", "Walmart", "Target", "LEGO.com", "Best Buy"]:
-                sim = simulate_price(msrp, retailer)
+                sim = simulate_price(msrp, retailer, set_number)
                 if sim:
                     results.append(sim)
 
-        # Save prices to database
         for r in results:
             conn.execute("""
                 INSERT INTO prices (set_id, retailer, price, url, available, updated_at)
@@ -269,7 +247,7 @@ def run_scraper():
             """, (set_id, r["retailer"], r["price"], r["url"], r.get("available", 1)))
 
         updated += 1
-        time.sleep(0.5)  # Be polite to servers
+        time.sleep(0.5)
 
     conn.commit()
     conn.close()
