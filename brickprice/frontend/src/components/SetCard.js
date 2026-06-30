@@ -1,13 +1,9 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { formatCPP, formatPrice, getCPPColor, getCPPLabel, getThemeEmoji } from '../hooks/api';
+import { formatPrice, getThemeEmoji } from '../hooks/api';
 
 export default function SetCard({ set }) {
-  const label = getCPPLabel(set.cpp);
   const emoji = getThemeEmoji(set.theme);
-  const discount = set.msrp && set.best_price
-    ? Math.round((1 - set.best_price / set.msrp) * 100)
-    : 0;
 
   return (
     <Link to={`/set/${set.id}`} style={{ textDecoration: 'none' }}>
@@ -34,7 +30,6 @@ export default function SetCard({ set }) {
           e.currentTarget.style.transform = 'translateY(0)';
         }}
       >
-        {/* Image / Emoji */}
         <div style={{
           width: '100%', aspectRatio: '1',
           background: 'var(--gray-100)',
@@ -51,20 +46,8 @@ export default function SetCard({ set }) {
             />
           ) : null}
           <span style={{ display: set.image_url ? 'none' : 'flex' }}>{emoji}</span>
-
-          {discount >= 10 && (
-            <div style={{
-              position: 'absolute', top: '8px', right: '8px',
-              background: '#FFD700', color: '#1C1C1C',
-              fontSize: '11px', fontWeight: '600',
-              padding: '3px 7px', borderRadius: '99px'
-            }}>
-              -{discount}%
-            </div>
-          )}
         </div>
 
-        {/* Info */}
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: '11px', color: 'var(--gray-400)', fontFamily: 'monospace', marginBottom: '2px' }}>
             #{set.set_number} · {set.theme}
@@ -77,37 +60,21 @@ export default function SetCard({ set }) {
           </div>
         </div>
 
-        {/* Price */}
         <div style={{ borderTop: '1px solid var(--gray-100)', paddingTop: '10px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <div style={{
-                fontSize: '22px', fontWeight: '600',
-                color: getCPPColor(set.cpp), lineHeight: '1'
-              }}>
-                {formatCPP(set.cpp)}
-              </div>
-              <div style={{ fontSize: '11px', color: 'var(--gray-400)' }}>per piece</div>
+              <div style={{ fontSize: '13px', color: 'var(--gray-400)' }}>MSRP</div>
+              <div style={{ fontSize: '16px', fontWeight: '500' }}>{formatPrice(set.msrp)}</div>
             </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: '16px', fontWeight: '500' }}>{formatPrice(set.best_price)}</div>
-              <div style={{ fontSize: '11px', color: 'var(--gray-400)' }}>
-                at {set.best_retailer || '—'}
-              </div>
+            <div style={{
+              background: '#1C1C1C', color: '#FFD700',
+              fontSize: '12px', fontWeight: '500',
+              padding: '7px 12px', borderRadius: '8px',
+              whiteSpace: 'nowrap'
+            }}>
+              View prices →
             </div>
           </div>
-
-          {label && (
-            <div style={{
-              marginTop: '8px',
-              background: label.bg, color: label.color,
-              fontSize: '11px', fontWeight: '500',
-              padding: '3px 8px', borderRadius: '99px',
-              display: 'inline-block'
-            }}>
-              {label.text}
-            </div>
-          )}
         </div>
       </div>
     </Link>
