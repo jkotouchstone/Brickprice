@@ -1,18 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { apiFetch, formatCPP, formatPrice, getCPPColor, getCPPLabel, getThemeEmoji } from '../hooks/api';
+import { apiFetch, formatPrice, getThemeEmoji } from '../hooks/api';
 
-function PriceRow({ p, piecCount }) {
-  const cpp = pieceCount && p.price ? (p.price / pieceCount * 100).toFixed(1) : null;
-  const isBest = p._isBest;
-
+function StoreRow({ p }) {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: '12px',
       padding: '14px 16px',
-      background: isBest ? '#FFFBE6' : 'white',
-      border: `1px solid ${isBest ? '#FFD700' : 'var(--gray-200)'}`,
+      background: 'white',
+      border: '1px solid var(--gray-200)',
       borderRadius: '10px',
       marginBottom: '8px',
     }}>
@@ -20,31 +16,19 @@ function PriceRow({ p, piecCount }) {
         {storeEmoji(p.retailer)}
       </div>
       <div style={{ flex: 1 }}>
-        <div style={{ fontWeight: '600', fontSize: '15px' }}>
-          {p.retailer}
-          {isBest && <span style={{
-            marginLeft: '8px', background: '#FFD700', color: '#1C1C1C',
-            fontSize: '10px', padding: '2px 7px', borderRadius: '99px', fontWeight: '600'
-          }}>Best price</span>}
+        <div style={{ fontWeight: '600', fontSize: '15px' }}>{p.retailer}</div>
+        <div style={{ fontSize: '12px', color: 'var(--gray-400)' }}>
+          Prices vary — check the retailer for current pricing
         </div>
-        {cpp && <div style={{ fontSize: '12px', color: 'var(--gray-400)' }}>{cpp}¢ per piece</div>}
-      </div>
-      <div style={{ textAlign: 'right' }}>
-        <div style={{ fontSize: '22px', fontWeight: '600' }}>{formatPrice(p.price)}</div>
-        {p.available ? (
-          <div style={{ fontSize: '12px', color: '#0F6E56' }}>✓ In stock</div>
-        ) : (
-          <div style={{ fontSize: '12px', color: 'var(--gray-400)' }}>Out of stock</div>
-        )}
       </div>
       {p.url && (
         <a href={p.url} target="_blank" rel="noopener noreferrer" style={{
-          background: '#1C1C1C', color: isBest ? '#FFD700' : 'white',
+          background: '#1C1C1C', color: 'white',
           padding: '8px 16px', borderRadius: '8px',
           fontSize: '13px', fontWeight: '500', whiteSpace: 'nowrap',
-          flexShrink: 0
+          flexShrink: 0, textDecoration: 'none'
         }}>
-          View deal →
+          Check price →
         </a>
       )}
     </div>
@@ -59,8 +43,6 @@ function storeEmoji(retailer) {
   return map[retailer] || '🏬';
 }
 
-let pieceCount = 0; // module-level for PriceRow access
-
 export default function SetDetail() {
   const { id } = useParams();
   const [set, setSet] = useState(null);
@@ -69,7 +51,7 @@ export default function SetDetail() {
   useEffect(() => {
     setLoading(true);
     apiFetch(`/api/sets/${id}`)
-      .then(data => { setSet(data); pieceCount = data.piece_count; setLoading(false); })
+      .then(data => { setSet(data); setLoading(false); })
       .catch(() => setLoading(false));
   }, [id]);
 
@@ -86,17 +68,25 @@ export default function SetDetail() {
     </div>
   );
 
-  const bestPrice = set.prices?.[0];
-  const cpp = bestPrice && set.piece_count ? bestPrice.price / set.piece_count * 100 : null;
-  const label = getCPPLabel(cpp);
-  const discount = set.msrp && bestPrice ? Math.round((1 - bestPrice.price / set.msrp) * 100) : 0;
   const emoji = getThemeEmoji(set.theme);
-  const pricesWithBest = set.prices?.map((p, i) => ({ ...p, _isBest: i === 0 })) || [];
+
+  // Dedupe retailers — only show one row per retailer
+  const uniqueRetailers = [];
+  const seen = new Set();
+  (set.prices || []).forEach(p => {
+    if (!seen.has(p.retailer)) {
+      seen.add(p.retailer);
+      uniqueRetailers.push(p);
+    }
+  });
+
+  const costPerPiece = set.msrp && set.piece_count
+    ? (set.msrp / set.piece_count * 100).toFixed(1)
+    : null;
 
   return (
     <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '28px 20px 60px' }}>
 
-      {/* Breadcrumb */}
       <div style={{ fontSize: '13px', color: 'var(--gray-400)', marginBottom: '20px' }}>
         <Link to="/" style={{ color: 'var(--gray-400)' }}>Home</Link>
         {' / '}
@@ -107,7 +97,6 @@ export default function SetDetail() {
         <span style={{ color: 'var(--black)' }}>{set.name}</span>
       </div>
 
-      {/* Hero */}
       <div style={{
         display: 'grid', gridTemplateColumns: '300px 1fr',
         gap: '32px', marginBottom: '40px',
@@ -115,7 +104,6 @@ export default function SetDetail() {
         borderRadius: '20px', padding: '32px', alignItems: 'start'
       }}>
 
-        {/* Image */}
         <div style={{
           background: 'var(--gray-100)', borderRadius: '14px',
           aspectRatio: '1', display: 'flex', alignItems: 'center',
@@ -129,7 +117,6 @@ export default function SetDetail() {
           ) : emoji}
         </div>
 
-        {/* Info */}
         <div>
           <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
             <span style={{
@@ -158,11 +145,10 @@ export default function SetDetail() {
             {set.name}
           </h1>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '24px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px', marginBottom: '24px' }}>
             {[
               { label: 'Pieces', value: set.piece_count?.toLocaleString() },
               { label: 'MSRP', value: formatPrice(set.msrp) },
-              { label: 'Best price', value: formatPrice(bestPrice?.price) },
             ].map(stat => (
               <div key={stat.label} style={{
                 background: 'var(--gray-50)', borderRadius: '10px', padding: '12px 14px'
@@ -175,122 +161,41 @@ export default function SetDetail() {
             ))}
           </div>
 
-          {/* CPP hero */}
-          <div style={{
-            background: '#1C1C1C', borderRadius: '14px', padding: '20px 24px',
-            display: 'flex', alignItems: 'center', gap: '20px'
-          }}>
-            <div>
-              <div style={{ fontSize: '42px', fontWeight: '700', color: '#FFD700', lineHeight: '1' }}>
-                {formatCPP(cpp)}
-              </div>
-              <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)', marginTop: '4px' }}>
-                cost per piece
-              </div>
-            </div>
-            <div style={{ flex: 1 }}>
-              {label && (
-                <div style={{
-                  background: label.bg, color: label.color,
-                  fontSize: '14px', fontWeight: '600',
-                  padding: '8px 16px', borderRadius: '10px',
-                  display: 'inline-block', marginBottom: '6px'
-                }}>{label.text}</div>
-              )}
-              {discount > 0 && (
-                <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)' }}>
-                  {discount}% off MSRP at {bestPrice?.retailer}
+          {costPerPiece && (
+            <div style={{
+              background: '#1C1C1C', borderRadius: '14px', padding: '20px 24px',
+              display: 'flex', alignItems: 'center', gap: '20px'
+            }}>
+              <div>
+                <div style={{ fontSize: '36px', fontWeight: '700', color: '#FFD700', lineHeight: '1' }}>
+                  {costPerPiece}¢
                 </div>
-              )}
+                <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)', marginTop: '4px' }}>
+                  cost per piece at MSRP
+                </div>
+              </div>
+              <div style={{ flex: 1, fontSize: '13px', color: 'rgba(255,255,255,0.6)' }}>
+                Actual prices vary by retailer and change daily — check current pricing below.
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 
-      {/* Prices + Chart grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: '24px', alignItems: 'start' }}>
-
-        {/* All retailer prices */}
-        <div>
-          <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '16px' }}>
-            Prices across stores
-          </h2>
-          {pricesWithBest.length === 0 ? (
-            <p style={{ color: 'var(--gray-400)' }}>No current prices tracked for this set.</p>
-          ) : (
-            pricesWithBest.map((p, i) => (
-              <PriceRow key={i} p={p} pieceCount={set.piece_count} />
-            ))
-          )}
-        </div>
-
-        {/* Price history chart */}
-        <div style={{
-          background: 'white', border: '1px solid var(--gray-200)',
-          borderRadius: 'var(--radius-lg)', padding: '20px'
-        }}>
-          <h2 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px' }}>
-            📈 30-day price history
-          </h2>
-          {set.history && set.history.length > 1 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={set.history} margin={{ top: 5, right: 5, bottom: 5, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#F2F1EE" />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fontSize: 11, fill: '#A8A7A2' }}
-                  tickFormatter={d => d?.slice(5)}
-                  interval="preserveStartEnd"
-                />
-                <YAxis
-                  tick={{ fontSize: 11, fill: '#A8A7A2' }}
-                  tickFormatter={v => `$${v}`}
-                  width={50}
-                />
-                <Tooltip
-                  formatter={(v) => [`$${v?.toFixed(2)}`, 'Best price']}
-                  labelFormatter={l => `Date: ${l}`}
-                  contentStyle={{ fontSize: '13px', borderRadius: '8px', border: '1px solid #E4E3DF' }}
-                />
-                <Line
-                  type="monotone" dataKey="min_price"
-                  stroke="#FFD700" strokeWidth={2.5}
-                  dot={false} activeDot={{ r: 5, fill: '#FFD700' }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          ) : (
-            <div style={{ textAlign: 'center', padding: '40px', color: 'var(--gray-400)', fontSize: '13px' }}>
-              <div style={{ fontSize: '28px', marginBottom: '8px' }}>📊</div>
-              Price history builds over time as we track this set daily.
-            </div>
-          )}
-
-          {/* Price stats */}
-          {set.history && set.history.length > 0 && (() => {
-            const prices = set.history.map(h => h.min_price).filter(Boolean);
-            const min = Math.min(...prices);
-            const max = Math.max(...prices);
-            const current = prices[prices.length - 1];
-            return (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginTop: '16px' }}>
-                {[
-                  { label: '30-day low', value: formatPrice(min), color: '#0F6E56' },
-                  { label: '30-day high', value: formatPrice(max), color: '#993C1D' },
-                  { label: 'Current', value: formatPrice(current), color: 'var(--black)' },
-                ].map(s => (
-                  <div key={s.label} style={{
-                    background: 'var(--gray-50)', borderRadius: '8px', padding: '10px',
-                    textAlign: 'center'
-                  }}>
-                    <div style={{ fontSize: '14px', fontWeight: '600', color: s.color }}>{s.value}</div>
-                    <div style={{ fontSize: '10px', color: 'var(--gray-400)', marginTop: '2px' }}>{s.label}</div>
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
-        </div>
+      <div>
+        <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '6px' }}>
+          Where to buy
+        </h2>
+        <p style={{ fontSize: '13px', color: 'var(--gray-400)', marginBottom: '16px' }}>
+          We link directly to each retailer so you can see live, accurate pricing.
+        </p>
+        {uniqueRetailers.length === 0 ? (
+          <p style={{ color: 'var(--gray-400)' }}>No retailer links available for this set yet.</p>
+        ) : (
+          uniqueRetailers.map((p, i) => (
+            <StoreRow key={i} p={p} />
+          ))
+        )}
       </div>
     </div>
   );
